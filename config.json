@@ -1,0 +1,53 @@
+[
+  {
+    "interface": ":8080",
+    "upstreams": [
+      {
+        "path": "example1",
+        "method": "GET",
+        "backends": [
+          "https://www.google.kz",
+          "http://www.instagram.com",
+          "https://www.wikipedia.org",
+          "https://github.com"
+        ],
+        "proxyMethod": "round-robin"
+      },
+      {
+      "path": "",
+      "method": "GET",
+      "backends": [
+        "https://kino.kz",
+        "https://qiwi.kz"
+      ],
+        "proxyMethod": "anycast"
+      }
+    ]
+  },
+  {
+    "interface": ":8880",
+    "upstreams": [
+      {
+        "path": "example1",
+        "method": "GET",
+        "backends": [
+          "https://www.google.kz",
+          "http://www.instagram.com",
+          "https://www.wikipedia.org",
+          "https://github.com"
+        ],
+        "proxyMethod": "round-robin"
+      },
+      {
+        "path": "",
+        "method": "GET",
+        "backends": [
+          "https://kino.kz",
+          "https://qiwi.kz"
+        ],
+        "proxyMethod": "anycast"
+      }
+    ]
+  }
+]
+
