@@ -2,6 +2,7 @@ package lib
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 )
 
@@ -26,5 +27,9 @@ func GetConfig(filename string) ([]Config, error) {
 	_= json.Unmarshal(file, &data)
 
 	return data, nil
+}
+
+func (c *Config) String() string {
+	return fmt.Sprintf("%s", c)
 }
 

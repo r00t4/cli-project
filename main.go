@@ -2,6 +2,7 @@ package main
 
 import (
 	"cliproject/lib"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/urfave/cli"
@@ -14,18 +15,6 @@ import (
 	"syscall"
 )
 
-type Config struct {
-	Interface string`json:interface`
-	Upstreams []Upstream`json:"upstreams"`
-}
-
-type Upstream struct {
-	Path string`json:"path"`
-	Method string`json:"method"`
-	Backends []string`json:"backends"`
-	ProxyMethod string`json:"proxyMethod"`
-}
-
 var (
 	app = cli.NewApp()
 	name = "config.json"
@@ -36,6 +25,7 @@ var (
 	ErrNotRunning    = errors.New("Process is not running")
 	ErrUnableToParse = errors.New("Unable to read and parse process id")
 	ErrUnableToKill  = errors.New("Unable to kill process")
+	ErrNotSaved      = errors.New("No default config")
 )
 
 func main() {
@@ -73,8 +63,15 @@ func commands() {
 		{
 			Name:    "reload",
 			Aliases: []string{"re"},
-			Usage:   "Reload program",
+			Usage:   "Reload running servers",
 			Action: reload,
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:        "daemon, d",
+					Usage:       "daemon flag",
+					Destination: &isDaemon,
+				},
+			},
 		},
 		{
 			Name: "stop",
@@ -90,10 +87,10 @@ func start(filename string){
 		log.Println(err)
 		return
 	}
-	//n := len(data)
+	saveConfig(data)
 	var servers []lib.MyServer
 	for _, config := range data {
-		server := lib.Init(&config)
+		server := lib.NewServer(&config)
 		servers = append(servers, server)
 		server.RunServer()
 	}
@@ -113,11 +110,11 @@ func run(c *cli.Context) {
 		runDaemon(c)
 	}
 	if c.Args().First() != "" {
-		name = c.Args().Get(0)
-		start(name)
+		fmt.Printf("started with %s configuration\n", c.Args().First())
+		start(c.Args().First())
 	} else {
 		fmt.Printf("started with default configuration\n")
-		start(name)
+		start(getDefaultConfigFilePath())
 	}
 }
 
@@ -155,9 +152,17 @@ func stop(ctx *cli.Context) error {
 	return nil
 }
 
-func reload() {
-	fmt.Printf("reload with %s configuration\n", name)
-	start(name)
+func reload(ctx *cli.Context) error {
+	err := stop(ctx)
+	if err != nil {
+		return err
+	}
+
+	run(ctx)
+
+	fmt.Printf("reload with %s configuration\n", getLastConfigFilePath())
+	run(ctx)
+	return nil
 }
 
 func runDaemon(c *cli.Context) error {
@@ -168,6 +173,29 @@ func runDaemon(c *cli.Context) error {
 	os.Exit(0)
 
 	return nil
+}
+
+func saveConfig(config []lib.Config) {
+	file, err := os.Create(getLastConfigFilePath())
+	if err != nil {
+		log.Printf("Unable to create config file : %v\n", err)
+		os.Exit(1)
+	}
+
+	defer file.Close()
+	// TODO marshal
+	json, err := json.Marshal(config)
+	if err != nil {
+		return
+	}
+	_, err = file.Write(json)
+
+	if err != nil {
+		log.Printf("Unable to create config file : %v\n", err)
+		os.Exit(1)
+	}
+
+	file.Sync()
 }
 
 func savePID(pid int){
@@ -191,4 +219,12 @@ func savePID(pid int){
 
 func getPidFilePath() string {
 	return os.Getenv("HOME") + "/daemon.pid"
+}
+
+func getLastConfigFilePath() string {
+	return os.Getenv("HOME") + "/lastConfig.json"
+}
+
+func getDefaultConfigFilePath() string {
+	return os.Getenv("HOME") + "/default.json"
 }
