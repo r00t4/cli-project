@@ -2,19 +2,20 @@ package lib
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 )
 
 type Config struct {
-	Interface string`json:interface`
-	Upstreams []Upstream`json:"upstreams"`
+	Interface string     `json:interface`
+	Upstreams []Upstream `json:"upstreams"`
 }
 
 type Upstream struct {
-	Path string`json:"path"`
-	Method string`json:"method"`
-	Backends []string`json:"backends"`
-	ProxyMethod string`json:"proxyMethod"`
+	Path        string   `json:"path"`
+	Method      string   `json:"method"`
+	Backends    []string `json:"backends"`
+	ProxyMethod string   `json:"proxyMethod"`
 }
 
 func GetConfig(filename string) ([]Config, error) {
@@ -23,8 +24,11 @@ func GetConfig(filename string) ([]Config, error) {
 		return []Config{}, err
 	}
 	var data []Config
-	_= json.Unmarshal(file, &data)
+	_ = json.Unmarshal(file, &data)
 
 	return data, nil
 }
 
+func (c *Config) String() string {
+	return fmt.Sprintf("%s", c)
+}

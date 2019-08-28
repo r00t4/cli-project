@@ -28,21 +28,18 @@
     "interface": ":8880",
     "upstreams": [
       {
-        "path": "example1",
+        "path": "fib/{id:[0-9]+}",
         "method": "GET",
         "backends": [
-          "https://www.google.kz",
-          "http://www.instagram.com",
-          "https://www.wikipedia.org",
-          "https://github.com"
+          "amqp://guest:guest@localhost:5672/"
         ],
-        "proxyMethod": "round-robin"
+        "proxyMethod": "rabbitmq"
       },
       {
-        "path": "",
+        "path": "kino",
         "method": "GET",
         "backends": [
-          "https://kino.kz",
+          "https://google.kz",
           "https://qiwi.kz"
         ],
         "proxyMethod": "anycast"

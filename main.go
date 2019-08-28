@@ -2,6 +2,7 @@ package main
 
 import (
 	"cliproject/lib"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/urfave/cli"
@@ -14,21 +15,9 @@ import (
 	"syscall"
 )
 
-type Config struct {
-	Interface string`json:interface`
-	Upstreams []Upstream`json:"upstreams"`
-}
-
-type Upstream struct {
-	Path string`json:"path"`
-	Method string`json:"method"`
-	Backends []string`json:"backends"`
-	ProxyMethod string`json:"proxyMethod"`
-}
-
 var (
-	app = cli.NewApp()
-	name = "config.json"
+	app      = cli.NewApp()
+	name     = "config.json"
 	isDaemon = false
 )
 
@@ -36,6 +25,7 @@ var (
 	ErrNotRunning    = errors.New("Process is not running")
 	ErrUnableToParse = errors.New("Unable to read and parse process id")
 	ErrUnableToKill  = errors.New("Unable to kill process")
+	ErrNotSaved      = errors.New("No default config")
 )
 
 func main() {
@@ -54,14 +44,13 @@ func info() {
 	app.EnableBashCompletion = true
 }
 
-
 func commands() {
 	app.Commands = []cli.Command{
 		{
 			Name:    "run",
 			Aliases: []string{"r"},
 			Usage:   "To run",
-			Action: run,
+			Action:  run,
 			Flags: []cli.Flag{
 				cli.BoolFlag{
 					Name:        "daemon, d",
@@ -73,33 +62,40 @@ func commands() {
 		{
 			Name:    "reload",
 			Aliases: []string{"re"},
-			Usage:   "Reload program",
-			Action: reload,
+			Usage:   "Reload running servers",
+			Action:  reload,
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:        "daemon, d",
+					Usage:       "daemon flag",
+					Destination: &isDaemon,
+				},
+			},
 		},
 		{
-			Name: "stop",
-			Usage: "Stop servers",
+			Name:   "stop",
+			Usage:  "Stop servers",
 			Action: stop,
 		},
 	}
 }
 
-func start(filename string){
+func start(filename string) {
 	data, err := lib.GetConfig(filename)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	//n := len(data)
+	saveConfig(data)
 	var servers []lib.MyServer
 	for _, config := range data {
-		server := lib.Init(&config)
+		server := lib.NewServer(&config)
 		servers = append(servers, server)
 		server.RunServer()
 	}
 
 	sign := make(chan os.Signal, 1)
-	signal.Notify(sign, os.Interrupt,os.Kill , syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sign, os.Interrupt, os.Kill, syscall.SIGINT, syscall.SIGTERM)
 	<-sign
 
 	for _, server := range servers {
@@ -107,17 +103,16 @@ func start(filename string){
 	}
 }
 
-
 func run(c *cli.Context) {
 	if isDaemon {
 		runDaemon(c)
 	}
 	if c.Args().First() != "" {
-		name = c.Args().Get(0)
-		start(name)
+		fmt.Printf("started with %s configuration\n", c.Args().First())
+		start(c.Args().First())
 	} else {
 		fmt.Printf("started with default configuration\n")
-		start(name)
+		start(getDefaultConfigFilePath())
 	}
 }
 
@@ -155,9 +150,17 @@ func stop(ctx *cli.Context) error {
 	return nil
 }
 
-func reload() {
-	fmt.Printf("reload with %s configuration\n", name)
-	start(name)
+func reload(ctx *cli.Context) error {
+	err := stop(ctx)
+	if err != nil {
+		return err
+	}
+
+	run(ctx)
+
+	fmt.Printf("reload with %s configuration\n", getLastConfigFilePath())
+	run(ctx)
+	return nil
 }
 
 func runDaemon(c *cli.Context) error {
@@ -170,7 +173,30 @@ func runDaemon(c *cli.Context) error {
 	return nil
 }
 
-func savePID(pid int){
+func saveConfig(config []lib.Config) {
+	file, err := os.Create(getLastConfigFilePath())
+	if err != nil {
+		log.Printf("Unable to create config file : %v\n", err)
+		os.Exit(1)
+	}
+
+	defer file.Close()
+	// TODO marshal
+	json, err := json.Marshal(config)
+	if err != nil {
+		return
+	}
+	_, err = file.Write(json)
+
+	if err != nil {
+		log.Printf("Unable to create config file : %v\n", err)
+		os.Exit(1)
+	}
+
+	file.Sync()
+}
+
+func savePID(pid int) {
 	file, err := os.Create(getPidFilePath())
 	if err != nil {
 		log.Printf("Unable to create pid file : %v\n", err)
@@ -191,4 +217,12 @@ func savePID(pid int){
 
 func getPidFilePath() string {
 	return os.Getenv("HOME") + "/daemon.pid"
+}
+
+func getLastConfigFilePath() string {
+	return os.Getenv("HOME") + "/lastConfig.json"
+}
+
+func getDefaultConfigFilePath() string {
+	return os.Getenv("HOME") + "/default.json"
 }
