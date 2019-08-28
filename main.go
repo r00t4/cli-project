@@ -1,7 +1,7 @@
 package main
 
 import (
-	"cliproject/lib"
+	"github.com/r00t4/cliproject/lib"
 	"encoding/json"
 	"errors"
 	"fmt"
