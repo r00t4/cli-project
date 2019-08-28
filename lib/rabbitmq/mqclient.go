@@ -5,6 +5,11 @@ import (
 	"log"
 )
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 68bc5947a4356e74939dda9b150af1c99ee3c8ee
 func failOnError(err error, msg string) {
 	if err != nil {
 		log.Fatalf("%s: %s", msg, err)
@@ -27,7 +32,11 @@ func Init() RabbitMQ {
 	return mq
 }
 
+<<<<<<< HEAD
 func (mq *RabbitMQ) send() {
+=======
+func (mq *RabbitMQ) send(){
+>>>>>>> 68bc5947a4356e74939dda9b150af1c99ee3c8ee
 	q, err := mq.ch.QueueDeclare(
 		"hello", // name
 		false,   // durable
@@ -44,9 +53,17 @@ func (mq *RabbitMQ) send() {
 		q.Name, // routing key
 		false,  // mandatory
 		false,  // immediate
+<<<<<<< HEAD
 		amqp.Publishing{
+=======
+		amqp.Publishing {
+>>>>>>> 68bc5947a4356e74939dda9b150af1c99ee3c8ee
 			ContentType: "text/plain",
 			Body:        []byte(body),
 		})
 	failOnError(err, "Failed to publish a message")
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 68bc5947a4356e74939dda9b150af1c99ee3c8ee

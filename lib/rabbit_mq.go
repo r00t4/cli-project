@@ -3,6 +3,8 @@ package lib
 import (
 	"errors"
 	"github.com/streadway/amqp"
+	"fmt"
+	"log"
 )
 
 type Connection struct {
@@ -11,10 +13,10 @@ type Connection struct {
 }
 
 type ConnectionPool struct {
-	Connections     []*Connection
+	Connections []*Connection
 	UsedConnections []*Connection
-	MaxConnSize     int
-	stopped         bool
+	MaxConnSize int
+	stopped bool
 }
 
 func NewConnectionPool(url string) ConnectionPool {
@@ -46,10 +48,10 @@ func (cp *ConnectionPool) ReleaseConnection(id int) error {
 	for i, used := range cp.UsedConnections {
 		if id == used.Id {
 			cp.Connections = append(cp.Connections, used)
-			tmp := cp.UsedConnections[len(cp.UsedConnections)-1]
-			cp.UsedConnections[i] = cp.UsedConnections[len(cp.UsedConnections)-1]
-			cp.UsedConnections[len(cp.UsedConnections)-1] = tmp
-			cp.UsedConnections = cp.UsedConnections[:len(cp.UsedConnections)-1]
+			log.Println("connection found")
+			cp.UsedConnections = append(cp.UsedConnections[:i], cp.UsedConnections[i+1:]...)
+			fmt.Println(cp.Connections)
+			fmt.Println(cp.UsedConnections)
 			return nil
 		}
 	}

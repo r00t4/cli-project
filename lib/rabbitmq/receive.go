@@ -23,6 +23,7 @@ func failOnError(err error, msg string) {
 	}
 }
 
+<<<<<<< HEAD
 type RabbitMQ struct {
 	conn *amqp.Connection
 	ch   *amqp.Channel
@@ -31,6 +32,17 @@ type RabbitMQ struct {
 }
 
 func NewRabbitMQ(url string) RabbitMQ {
+=======
+
+type RabbitMQ struct {
+	conn *amqp.Connection
+	ch *amqp.Channel
+	q amqp.Queue
+	stop chan bool
+}
+
+func NewRabbitMQ(url string) RabbitMQ{
+>>>>>>> 68bc5947a4356e74939dda9b150af1c99ee3c8ee
 	conn, err := amqp.Dial(url)
 	failOnError(err, "Failed to connect to RabbitMQ")
 
@@ -69,12 +81,21 @@ func (r *RabbitMQ) Listen() {
 	defer r.ch.Close()
 	msgs, err := r.ch.Consume(
 		r.q.Name, // queue
+<<<<<<< HEAD
 		"",       // consumer
 		false,    // auto-ack
 		false,    // exclusive
 		false,    // no-local
 		false,    // no-wait
 		nil,      // args
+=======
+		"",     // consumer
+		false,  // auto-ack
+		false,  // exclusive
+		false,  // no-local
+		false,  // no-wait
+		nil,    // args
+>>>>>>> 68bc5947a4356e74939dda9b150af1c99ee3c8ee
 	)
 	failOnError(err, "Failed to register a consumer")
 
@@ -104,4 +125,8 @@ func (r *RabbitMQ) Listen() {
 
 	log.Printf(" [*] Awaiting RPC requests")
 	<-r.stop
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 68bc5947a4356e74939dda9b150af1c99ee3c8ee
