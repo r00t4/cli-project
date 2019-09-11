@@ -16,7 +16,9 @@ import (
 )
 
 
-// MyServer describes our server
+// Representation of Server.
+
+// MyServer describes our server.
 type MyServer struct {
 	Server          *http.Server // main server that will listen and serve
 	rtr             *mux.Router // Router to add some handlers
@@ -25,12 +27,12 @@ type MyServer struct {
 	gracefulTimeout time.Duration // time to wait before server shutdown
 	data            Config // server configuration data
 	client          *http.Client // sending requests to backends uses Client
-	connection      ConnectionPool // connection pooling
+	connection      *RabbitMQSender // rabbitmq
 	isRabbitMQ      bool // describes is there rabbitmq request in config
 }
 
-// Initializer for MyServer
-// configures MyServer by using Config
+// Initializer for MyServer.
+// Configures MyServer by using Config.
 func NewServer(data *Config) MyServer {
 	myserver := MyServer{}
 	myserver.client = &http.Client{}
@@ -43,12 +45,12 @@ func NewServer(data *Config) MyServer {
 	return myserver
 }
 
-// creates new router for MyServer
+// Creates new router for MyServer.
 func (m *MyServer) newRouter() {
 	m.rtr = mux.NewRouter()
 }
 
-// configures server interface and router
+// Configures server interface and router.
 func (m *MyServer) configureServer() {
 	m.Server = &http.Server{
 		Addr:    "127.0.0.1" + m.data.Interface,
@@ -56,8 +58,8 @@ func (m *MyServer) configureServer() {
 	}
 }
 
-// configures handlers by using data in config
-// adds new path
+// Configures handlers by using data in Config.
+// Doesn't work if server is stopped.
 func (m *MyServer) configureHandlers() {
 	for _, item := range m.data.Upstreams {
 		upstream := item
@@ -76,16 +78,18 @@ func (m *MyServer) configureHandlers() {
 			select {
 			case <-request.Context().Done():
 				writer.WriteHeader(503)
+				break
 			default:
 				m.upstreamHandler(writer, request, &upstream)
+				break
 			}
 
 		})
 	}
 }
 
-// depending on proxy method sends http.Response chan to goroutine, when chan will get value
-// function upstreamHandler will write on http.ResponseWriter
+// Depending on proxy method sends http.Response chan to goroutine, when http.Response chan will take value.
+// Function upstreamHandler writes on http.ResponseWriter.
 func (m *MyServer) upstreamHandler(writer http.ResponseWriter, request *http.Request, upstream *Upstream) {
 	ch := make(chan *http.Response)
 	defer close(ch)
@@ -96,7 +100,9 @@ func (m *MyServer) upstreamHandler(writer http.ResponseWriter, request *http.Req
 		go m.rAnycastRequest(*upstream, ch)
 	} else {
 		if m.isRabbitMQ == false {
-			m.connection = NewConnectionPool(upstream.Backends[0])
+			conn := NewRabbitMQSender(upstream.Backends[0])
+			go conn.Listen()
+			m.connection = &conn
 			m.isRabbitMQ = true
 		}
 		params := mux.Vars(request)
@@ -119,12 +125,14 @@ func (m *MyServer) upstreamHandler(writer http.ResponseWriter, request *http.Req
 
 		writer.WriteHeader(d.StatusCode)
 		io.Copy(writer, d.Body) // write to http.ResponseWriter
-	case <-time.After(time.Second * 30):
-		log.Println("Time out: No news in 10 seconds")
+		break
+	case <-time.After(time.Second * 20):
+		log.Println("Time out: No news in 20 seconds")
+		break
 	}
 }
 
-// start listenAndServe method of server
+// Starts listenAndServe method of server.
 func (m *MyServer) RunServer() {
 	go func() {
 		log.Println("Server started with", m.data.Interface, "interface")
@@ -134,10 +142,10 @@ func (m *MyServer) RunServer() {
 	}()
 }
 
-// start graceful shutdown, firstly we mark that MyServer is going to stop
-// create context with timer, that equals to gracefulTimeout
-// sleeps for gracefulTimer
-// finally shuts down server
+// Start graceful shutdown, firstly we mark that MyServer is going to stop.
+// Create context with timer, that equals to gracefulTimeout.
+// Sleeps for gracefulTimer.
+// Finally shuts down server.
 func (m *MyServer) StopServer() error {
 	m.stopped = true
 	ctx, cancel := context.WithTimeout(context.Background(), m.gracefulTimeout)
@@ -146,19 +154,15 @@ func (m *MyServer) StopServer() error {
 	time.Sleep(m.gracefulTimeout)
 
 	if m.isRabbitMQ {
-		err := m.connection.ReleaseConnectionPool()
-		if err != nil {
-			log.Println(err)
-		}
-		log.Println("connection pool closed")
+		m.connection.CloseRabbitMQ()
 	}
 
 	log.Println("shutting down")
 	return m.Server.Shutdown(ctx)
 }
 
-// anycastRequest sends requests to all backends and waits for fastest response
-// there we use http.Response chan
+// AnycastRequest sends requests to all backends and waits for fastest response.
+// There we also use http.Response chan.
 func (m *MyServer) anycastRequest(upstream Upstream, ch chan *http.Response) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -178,9 +182,9 @@ func (m *MyServer) anycastRequest(upstream Upstream, ch chan *http.Response) {
 	}
 }
 
-// reliable anycast request sends anycast request,
+// Reliable anycast request sends anycast request,
 // but when it doesn't response in 10 seconds it will again
-// send anycast request
+// send anycast request.
 func (m *MyServer) rAnycastRequest(upstream Upstream, ch chan *http.Response) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -200,9 +204,9 @@ func (m *MyServer) rAnycastRequest(upstream Upstream, ch chan *http.Response) {
 	}
 }
 
-// round-robin request sends request to one backend using round-robin id
-// round-robin id is always increases to one after request
-// when round-robin id reaches backends length, it will reset to zero
+// Round-robin request sends request to one backend using round-robin id.
+// Round-robin id is always increases to one after request.
+// When round-robin id reaches backends length, it will reset to zero.
 func (m *MyServer) roundRobinRequest(upstream Upstream, ch chan *http.Response) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -223,9 +227,9 @@ func (m *MyServer) roundRobinRequest(upstream Upstream, ch chan *http.Response) 
 	m.roundId %= len(upstream.Backends)
 }
 
-// reliable round-robin request sends round-robin request
-// if one round-robin request will not give response
-// it will try another round-robin request using increased round-robin id
+// Reliable round-robin request sends round-robin request.
+// If one round-robin request will not give response.
+// It will try another round-robin request using increased round-robin id.
 func (m *MyServer) rRoundRobinRequest(upstream Upstream, ch chan *http.Response) {
 	response := make(chan *http.Response)
 	for range upstream.Backends {
@@ -242,24 +246,25 @@ func (m *MyServer) rRoundRobinRequest(upstream Upstream, ch chan *http.Response)
 
 func (m *MyServer) rabbitMQRequest(upstream Upstream, respChannel chan *http.Response, n int) {
 
-	connection, err := m.connection.GetConnection()
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	corrId, err := exec.Command("uuidgen").Output()
-	if err != nil {
-		log.Fatal(err)
-	}
+	corrId := getCorrId()
 	fmt.Printf("%s", corrId)
 
-	connection.Sender.Send(n, string(corrId))
+	err := m.connection.Send(n, &corrId)
+	if err != nil {
+		panic("sending error")
+	} else {
+		log.Println("send..")
+	}
 	k := make(chan string)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*6)
 
-	go connection.Sender.Receive(string(corrId), k)
+	go m.connection.Receive(string(corrId), k, ctx)
 	select {
+	case <-ctx.Done():
+		log.Println("Got a cancel request")
+		break
 	case p := <-k:
+		log.Println("something have come")
 		respChannel <- &http.Response{
 			Body:       ioutil.NopCloser(bytes.NewBufferString(p)),
 			Status:     "200 OK",
@@ -267,14 +272,18 @@ func (m *MyServer) rabbitMQRequest(upstream Upstream, respChannel chan *http.Res
 			Proto:      "HTTP/1.1",
 			Header:     make(http.Header, 0),
 		}
-	case <-time.After(10 * time.Second):
-		fmt.Println("timeout after 10 seconds")
+		break
+	case <-time.After(5 * time.Second):
+		cancel()
+		log.Println("timeout after 5 seconds")
+		break
 	}
-	fmt.Println("Connection Id: ", connection.Id)
+
+	return
 }
 
-// sending request using Client
-// response from url writes to http.Response chan
+// Sending request using Client.
+// Response from url writes to http.Response chan.
 func (m *MyServer) sendRequest(url string, method string, ch chan *http.Response) error {
 	defer func() {
 		if r := recover(); r != nil {
@@ -303,6 +312,17 @@ func (m *MyServer) sendRequest(url string, method string, ch chan *http.Response
 	return nil
 }
 
+
+// Generates unique Correlation Id
+func getCorrId() string {
+	corrId, err := exec.Command("uuidgen").Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return string(corrId)
+}
+
+// Checking for error
 func failOnError(err error, msg string) {
 	if err != nil {
 		log.Fatalf("%s: %s", msg, err)
