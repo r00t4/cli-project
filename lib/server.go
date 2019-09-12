@@ -3,7 +3,6 @@ package lib
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
 	"io"
@@ -123,6 +122,13 @@ func (m *MyServer) upstreamHandler(writer http.ResponseWriter, request *http.Req
 			writer.Header()[name] = values
 		}
 
+		//headers, err := json.Marshal(writer.Header()[])
+		//if err != nil {
+		//	log.Println("Failed to convert headers to json")
+		//} else {
+		//	log.Printf("%s %s %s", d.Request.Method, d.Request.URL.Host, headers)
+		//}
+
 		writer.WriteHeader(d.StatusCode)
 		io.Copy(writer, d.Body) // write to http.ResponseWriter
 		break
@@ -171,7 +177,7 @@ func (m *MyServer) anycastRequest(upstream Upstream, ch chan *http.Response) {
 	}()
 	response := make(chan *http.Response)
 	for _, url := range upstream.Backends {
-		go m.sendRequest(url, upstream.Method, response)
+		go m.SendRequest(url, upstream.Method, response)
 	}
 
 	select {
@@ -215,7 +221,7 @@ func (m *MyServer) roundRobinRequest(upstream Upstream, ch chan *http.Response) 
 	}()
 
 	response := make(chan *http.Response)
-	go m.sendRequest(upstream.Backends[m.roundId], upstream.Method, response)
+	go m.SendRequest(upstream.Backends[m.roundId], upstream.Method, response)
 
 	select {
 	case d := <-response:
@@ -247,13 +253,11 @@ func (m *MyServer) rRoundRobinRequest(upstream Upstream, ch chan *http.Response)
 func (m *MyServer) rabbitMQRequest(upstream Upstream, respChannel chan *http.Response, n int) {
 
 	corrId := getCorrId()
-	fmt.Printf("%s", corrId)
+	//fmt.Printf("%s", corrId)
 
 	err := m.connection.Send(n, &corrId)
 	if err != nil {
 		panic("sending error")
-	} else {
-		log.Println("send..")
 	}
 	k := make(chan string)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*6)
@@ -264,7 +268,6 @@ func (m *MyServer) rabbitMQRequest(upstream Upstream, respChannel chan *http.Res
 		log.Println("Got a cancel request")
 		break
 	case p := <-k:
-		log.Println("something have come")
 		respChannel <- &http.Response{
 			Body:       ioutil.NopCloser(bytes.NewBufferString(p)),
 			Status:     "200 OK",
@@ -284,7 +287,7 @@ func (m *MyServer) rabbitMQRequest(upstream Upstream, respChannel chan *http.Res
 
 // Sending request using Client.
 // Response from url writes to http.Response chan.
-func (m *MyServer) sendRequest(url string, method string, ch chan *http.Response) error {
+func (m *MyServer) SendRequest(url string, method string, ch chan *http.Response) error {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("Recovered in serve", r)
@@ -299,13 +302,6 @@ func (m *MyServer) sendRequest(url string, method string, ch chan *http.Response
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return err
-	}
-
-	headers, err := json.Marshal(resp.Header)
-	if err != nil {
-		log.Println("Failed to convert headers to json")
-	} else {
-		log.Printf("%s %s %s", method, url, headers)
 	}
 
 	ch <- resp

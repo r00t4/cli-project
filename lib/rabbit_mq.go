@@ -101,7 +101,7 @@ func (r *RabbitMQSender) Listen() {
 		for d := range msgs {
 			r.receivedMapMutex.RLock()
 			r.received[string(d.CorrelationId)] = string(d.Body)
-			log.Println(r.received[string(d.CorrelationId)])
+			//log.Println(r.received[string(d.CorrelationId)])
 			r.receivedMapMutex.RUnlock()
 			d.Ack(false)
 		}
